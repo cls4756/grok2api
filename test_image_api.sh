@@ -8,8 +8,24 @@ echo ""
 # 重启服务以应用新的日志
 echo "[1] 重启服务..."
 docker compose restart grok2api
-sleep 5
-echo "✓ 服务已重启"
+echo "等待服务启动..."
+sleep 10
+
+# 检查服务是否启动
+echo "检查服务状态..."
+for i in {1..30}; do
+    if curl -s http://192.168.68.193:8004/api/v1/admin/config -H "Authorization: Bearer grok2api@ddd" > /dev/null 2>&1; then
+        echo "✓ 服务已启动"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo "❌ 服务启动超时"
+        echo "查看服务日志："
+        docker compose logs grok2api --tail 20
+        exit 1
+    fi
+    sleep 1
+done
 echo ""
 
 # 清空日志

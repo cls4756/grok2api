@@ -290,13 +290,17 @@ async def chat_completions(request: ChatCompletionRequest):
             f"stream={request.stream}"
         )
         
+        # 根据stream参数选择合适的response_format
+        # 流式模式只支持b64_json，非流式模式使用url
+        response_format = "b64_json" if request.stream else "url"
+        
         # 构造图片生成请求
         image_request = ImageGenerationRequest(
             model=request.model,
             prompt=message,
             n=1,
             stream=request.stream,
-            response_format="url",  # 默认返回 URL
+            response_format=response_format,
         )
         
         # 直接返回 create_image 的结果
