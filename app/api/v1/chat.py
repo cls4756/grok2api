@@ -2,6 +2,9 @@
 Chat Completions API 路由
 """
 
+import json
+import time
+import uuid
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter
@@ -303,8 +306,85 @@ async def chat_completions(request: ChatCompletionRequest):
             response_format=response_format,
         )
         
-        # 直接返回 create_image 的结果
-        return await create_image(image_request)
+        # 调用图片生成API
+        image_result = await create_image(image_request)
+        
+        # 如果是流式响应，直接返回
+        if request.stream:
+            return image_result
+        
+        # 非流式响应：需要转换为Chat Completions格式
+        # 从image_result中提取数据并重新包装
+        try:
+            # image_result是JSONResponse，我们需要提取其内容
+            # 最简单的方法是重新调用一次，但这次我们自己构造响应
+            from app.api.v1.image import _get_token, resolve_aspect_ratio
+            from app.services.grok.services.image import image_service
+            from app.services.grok.processors.image_ws_processors import ImageWSCollectProcessor
+            from app.core.config import get_config
+            
+            # 重新生成图片并获取数据
+            token_mgr, token = await _get_token(request.model)
+            model_info = ModelService.get(request.model)
+            use_ws = bool(get_config("image.image_ws"))
+            
+            if use_ws:
+                aspect_ratio = resolve_aspect_ratio("1024x1024")
+                enable_nsfw = bool(get_config("image.image_ws_nsfw"))
+                
+                upstream = image_service.stream(
+                    token=token,
+                    prompt=message,
+                    aspect_ratio=aspect_ratio,
+                    n=1,
+                    enable_nsfw=enable_nsfw,
+                )
+                
+                processor = ImageWSCollectProcessor(
+                    model_info.model_id,
+                    token,
+                    n=1,
+                    response_format=response_format,
+                )
+                
+                images = await processor.process(upstream)
+                
+                if images and len(images) > 0:
+                    image_url = images[0]
+                    
+                    # 构造Chat Completions格式响应
+                    chat_response = {
+                        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": f"![Generated Image]({image_url})"
+                                },
+                                "finish_reason": "stop"
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 0,
+                            "completion_tokens": 0,
+                            "total_tokens": 0
+                        }
+                    }
+                    logger.info(f"Converted image response to chat completion format")
+                    return JSONResponse(content=chat_response)
+            
+            # 如果不是WebSocket模式，返回原始结果
+            return image_result
+            
+        except Exception as e:
+            logger.error(f"Failed to convert image response: {e}", exc_info=True)
+            # 出错时返回原始结果
+            return image_result
+        return image_result
     else:
         result = await ChatService.completions(
             model=request.model,
