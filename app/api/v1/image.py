@@ -321,6 +321,12 @@ async def create_image(request: ImageGenerationRequest):
     token_mgr, token = await _get_token(request.model)
     model_info = ModelService.get(request.model)
     use_ws = bool(get_config("image.image_ws"))
+    
+    # 调试日志：记录关键配置和参数
+    logger.info(
+        f"Image generation: stream={request.stream}, use_ws={use_ws}, "
+        f"response_format={response_format}, n={request.n}, token={token[:10]}..."
+    )
 
     # 流式模式
     if request.stream:
@@ -376,6 +382,7 @@ async def create_image(request: ImageGenerationRequest):
 
     usage_override = None
     if use_ws:
+        logger.info(f"Using WebSocket mode for image generation (non-streaming)")
         aspect_ratio = resolve_aspect_ratio(request.size)
         enable_nsfw = bool(get_config("image.image_ws_nsfw"))
         all_images = []
@@ -430,6 +437,7 @@ async def create_image(request: ImageGenerationRequest):
             "input_tokens_details": {"text_tokens": 0, "image_tokens": 0},
         }
     else:
+        logger.info(f"Using HTTP API mode for image generation (non-streaming)")
         calls_needed = (n + 1) // 2
 
         if calls_needed == 1:

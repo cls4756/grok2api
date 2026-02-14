@@ -275,6 +275,32 @@ async def chat_completions(request: ChatCompletionRequest):
             resolution=v_conf.resolution_name,
             preset=v_conf.preset,
         )
+    elif model_info and model_info.is_image:
+        # 图片生成模型 - 直接返回，不要包装
+        from app.api.v1.image import ImageGenerationRequest, create_image
+        from app.services.grok.services.chat import MessageExtractor
+        
+        # 提取最后一条用户消息作为 prompt
+        message, _ = MessageExtractor.extract(
+            [msg.model_dump() for msg in request.messages]
+        )
+        
+        logger.info(
+            f"Image model detected: model={request.model}, prompt='{message[:50]}...', "
+            f"stream={request.stream}"
+        )
+        
+        # 构造图片生成请求
+        image_request = ImageGenerationRequest(
+            model=request.model,
+            prompt=message,
+            n=1,
+            stream=request.stream,
+            response_format="url",  # 默认返回 URL
+        )
+        
+        # 直接返回 create_image 的结果
+        return await create_image(image_request)
     else:
         result = await ChatService.completions(
             model=request.model,
