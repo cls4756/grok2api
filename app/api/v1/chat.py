@@ -353,6 +353,14 @@ async def chat_completions(request: ChatCompletionRequest):
                     image_url = images[0]
                     
                     # 构造Chat Completions格式响应
+                    # 支持多种客户端格式：
+                    # 1. 纯URL（Cherry Studio等）
+                    # 2. Markdown格式（通用）
+                    # 3. 图片消息格式（部分客户端）
+                    
+                    # 使用纯URL + 提示文本的组合
+                    content = f"Generated image: {image_url}"
+                    
                     chat_response = {
                         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
                         "object": "chat.completion",
@@ -363,7 +371,7 @@ async def chat_completions(request: ChatCompletionRequest):
                                 "index": 0,
                                 "message": {
                                     "role": "assistant",
-                                    "content": f"![Generated Image]({image_url})"
+                                    "content": content
                                 },
                                 "finish_reason": "stop"
                             }
@@ -374,7 +382,7 @@ async def chat_completions(request: ChatCompletionRequest):
                             "total_tokens": 0
                         }
                     }
-                    logger.info(f"Converted image response to chat completion format")
+                    logger.info(f"Converted image response to chat completion format (url: {image_url})")
                     return JSONResponse(content=chat_response)
             
             # 如果不是WebSocket模式，返回原始结果
